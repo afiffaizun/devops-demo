@@ -1,2 +1,2 @@
-[prod]
-production ansible_host=192.168.123.163 ansible_user=devops
+[production]
+prod-server ansible_host=192.168.123.163 ansible_user=devops

@@ -72,6 +72,14 @@ pipeline {
                 echo "Deploying to production with Ansible..."
 
                 sh '''
+                    export LC_ALL=C.UTF-8
+                    export LANG=C.UTF-8
+                    export LANGUAGE=C.UTF-8
+                    export ANSIBLE_CONFIG=ansible/ansible.cfg
+
+                    locale -a || true
+                    ansible-playbook --version
+
                     ansible-playbook \
                         -i ansible/inventory \
                         ansible/deploy.yml \
