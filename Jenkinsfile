@@ -3,37 +3,48 @@ pipeline {
 
     environment {
         IMAGE = "mafifdev/devops-demo"
+        PROD_HOST = "192.168.123.163"
     }
 
     stages {
 
         stage('Checkout') {
             steps {
+                echo 'Checking out source code...'
                 checkout scm
             }
         }
 
         stage('Test') {
             steps {
+                echo 'Running application test...'
+
                 sh '''
                     python3 --version
                     docker --version
+
+                    python3 -m py_compile app.py
                 '''
             }
         }
 
-        stage('Build Docker Image') {
+        stage('Docker Build') {
             steps {
+                echo "Building Docker image..."
+
                 sh '''
                     docker build \
-                    -t $IMAGE:$BUILD_NUMBER \
-                    -t $IMAGE:latest .
+                        -t $IMAGE:$BUILD_NUMBER \
+                        -t $IMAGE:latest \
+                        .
                 '''
             }
         }
 
-        stage('Push Docker Image') {
+        stage('Docker Push') {
             steps {
+                echo "Pushing Docker image to Docker Hub..."
+
                 withCredentials([
                     usernamePassword(
                         credentialsId: 'mafifdev',
@@ -41,9 +52,10 @@ pipeline {
                         passwordVariable: 'DOCKER_PASSWORD'
                     )
                 ]) {
+
                     sh '''
                         echo "$DOCKER_PASSWORD" | docker login \
-                            -u "$DOCKER_USER" \
+                            --username "$DOCKER_USER" \
                             --password-stdin
 
                         docker push $IMAGE:$BUILD_NUMBER
@@ -53,6 +65,49 @@ pipeline {
                     '''
                 }
             }
+        }
+
+        stage('Ansible Deploy') {
+            steps {
+                echo "Deploying to production with Ansible..."
+
+                sh '''
+                    ansible-playbook \
+                        -i ansible/inventory \
+                        ansible/deploy.yml \
+                        -e "image_tag=$BUILD_NUMBER"
+                '''
+            }
+        }
+
+        stage('Health Check') {
+            steps {
+                echo "Checking application health..."
+
+                sh '''
+                    sleep 5
+
+                    curl -f http://$PROD_HOST/health || \
+                    curl -f http://$PROD_HOST/
+
+                    echo ""
+                    echo "Application is healthy!"
+                '''
+            }
+        }
+    }
+
+    post {
+        success {
+            echo "Deployment successful!"
+        }
+
+        failure {
+            echo "Pipeline failed!"
+        }
+
+        always {
+            sh 'docker logout || true'
         }
     }
 }
