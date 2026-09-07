@@ -1,0 +1,56 @@
+---
+- name: Deploy application to K3s
+  hosts: production
+  become: false
+
+  vars:
+    kubeconfig_path: "/home/devops/.kube/config"
+    image_tag: "{{ image_tag | default('latest') }}"
+
+  tasks:
+    - name: Create Kubernetes namespace
+      ansible.builtin.command:
+        cmd: kubectl create namespace devops-demo
+      environment:
+        KUBECONFIG: "{{ kubeconfig_path }}"
+      register: namespace_result
+      failed_when:
+        - namespace_result.rc != 0
+        - "'AlreadyExists' not in namespace_result.stderr"
+        - "'AlreadyExists' not in namespace_result.stdout"
+
+    - name: Copy deployment manifest
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../k8s/deployment.yaml"
+        dest: /tmp/deployment.yaml
+        mode: '0644'
+
+    - name: Copy service manifest
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../k8s/service.yaml"
+        dest: /tmp/service.yaml
+        mode: '0644'
+
+    - name: Replace IMAGE_TAG
+      ansible.builtin.replace:
+        path: /tmp/deployment.yaml
+        regexp: 'IMAGE_TAG'
+        replace: "{{ image_tag }}"
+
+    - name: Apply deployment
+      ansible.builtin.command:
+        cmd: kubectl apply -f /tmp/deployment.yaml
+      environment:
+        KUBECONFIG: "{{ kubeconfig_path }}"
+
+    - name: Apply service
+      ansible.builtin.command:
+        cmd: kubectl apply -f /tmp/service.yaml
+      environment:
+        KUBECONFIG: "{{ kubeconfig_path }}"
+
+    - name: Wait for deployment rollout
+      ansible.builtin.command:
+        cmd: kubectl rollout status deployment/devops-demo -n devops-demo --timeout=120s
+      environment:
+        KUBECONFIG: "{{ kubeconfig_path }}"
